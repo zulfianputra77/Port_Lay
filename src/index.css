@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
@@ -19,5 +20,40 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+@keyframes heroTitleShimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.hero-title-shimmer {
+  background-image: linear-gradient(
+    110deg,
+    #ffffff 0%,
+    #ffffff 36%,
+    #fde68a 50%,
+    #ffffff 64%,
+    #ffffff 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: heroTitleShimmer 5.5s ease-in-out infinite;
+  filter: drop-shadow(0 4px 18px rgba(15, 23, 42, 0.45));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-title-shimmer {
+    background-image: none;
+    color: #ffffff;
+    animation: none;
   }
 }

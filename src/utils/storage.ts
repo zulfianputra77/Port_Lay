@@ -142,13 +142,70 @@ export function mergeWithDefaults(partial: Partial<PortalConfig>): PortalConfig 
       stat3Value: partial.hero?.stat3Value?.trim() || DEFAULT_PORTAL_CONFIG.hero.stat3Value,
       stat3Label: partial.hero?.stat3Label?.trim() || DEFAULT_PORTAL_CONFIG.hero.stat3Label,
     },
+    leadership: {
+      visible:
+        typeof partial.leadership?.visible === 'boolean'
+          ? partial.leadership.visible
+          : DEFAULT_PORTAL_CONFIG.leadership.visible,
+      sectionTitle:
+        partial.leadership?.sectionTitle?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.sectionTitle,
+      principalName:
+        partial.leadership?.principalName?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.principalName,
+      principalTitle:
+        partial.leadership?.principalTitle?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.principalTitle,
+      principalNip:
+        typeof partial.leadership?.principalNip === 'string'
+          ? partial.leadership.principalNip.trim()
+          : DEFAULT_PORTAL_CONFIG.leadership.principalNip,
+      photoUrl: normalizeImageUrl(
+        partial.leadership?.photoUrl || DEFAULT_PORTAL_CONFIG.leadership.photoUrl
+      ),
+      greetingTitle:
+        partial.leadership?.greetingTitle?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.greetingTitle,
+      greetingMessage:
+        partial.leadership?.greetingMessage?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.greetingMessage,
+      visionTitle:
+        partial.leadership?.visionTitle?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.visionTitle,
+      visionText:
+        partial.leadership?.visionText?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.visionText,
+      missionTitle:
+        partial.leadership?.missionTitle?.trim() ||
+        DEFAULT_PORTAL_CONFIG.leadership.missionTitle,
+      missionItems: Array.isArray(partial.leadership?.missionItems)
+        ? partial.leadership.missionItems
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+        : DEFAULT_PORTAL_CONFIG.leadership.missionItems,
+    },
     about: {
       title: partial.about?.title?.trim() || DEFAULT_PORTAL_CONFIG.about.title,
       description: partial.about?.description?.trim() || DEFAULT_PORTAL_CONFIG.about.description,
       address: partial.about?.address?.trim() || DEFAULT_PORTAL_CONFIG.about.address,
-      email: partial.about?.email?.trim() || DEFAULT_PORTAL_CONFIG.about.email,
-      phone: partial.about?.phone?.trim() || DEFAULT_PORTAL_CONFIG.about.phone,
+      email: typeof partial.about?.email === 'string' ? partial.about.email.trim() : '',
+      phone: typeof partial.about?.phone === 'string' ? partial.about.phone.trim() : '',
       serviceHours: partial.about?.serviceHours?.trim() || DEFAULT_PORTAL_CONFIG.about.serviceHours,
+      extraItems: Array.isArray(partial.about?.extraItems)
+        ? partial.about.extraItems
+            .filter(
+              (item) =>
+                item &&
+                typeof item.label === 'string' &&
+                typeof item.value === 'string' &&
+                (item.label.trim().length > 0 || item.value.trim().length > 0)
+            )
+            .map((item, idx) => ({
+              id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `about-extra-${idx}`,
+              label: item.label.trim(),
+              value: item.value.trim(),
+            }))
+        : [],
     },
     layout: {
       columns: validColumns,

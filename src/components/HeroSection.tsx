@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LayoutGrid } from 'lucide-react';
+import { motion } from 'motion/react';
 import { HeroInfo } from '../types';
 
 interface HeroSectionProps {
@@ -18,6 +19,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     if (list.length > 0) return list;
     return hero.backgroundUrl ? [hero.backgroundUrl] : [];
   }, [hero.backgroundImages, hero.backgroundUrl]);
+
+  const titleWords = useMemo(
+    () => (hero.title || 'SMP NEGERI 004 JAMBI').trim().split(/\s+/).filter(Boolean),
+    [hero.title]
+  );
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [failedUrls, setFailedUrls] = useState<Record<string, boolean>>({});
@@ -66,13 +72,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         );
       })}
 
-      {/* Atmospheric Contrast Scrim */}
+      {/* Atmospheric Contrast Scrim (stays light regardless of page theme) */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-b from-slate-800/65 via-sky-950/55 to-slate-900/75"
+        className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-sky-950/60 to-slate-900/80"
       />
 
-      {/* Subtle Ambient Decorative Circles matching reference */}
+      {/* Subtle Ambient Decorative Circles */}
       <div
         aria-hidden="true"
         className="absolute -left-24 -top-20 w-80 h-80 rounded-full bg-white/[0.06] pointer-events-none"
@@ -88,23 +94,55 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
       {/* Hero Foreground Content */}
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24 flex flex-col items-center text-center">
-        {hero.kicker && (
-          <span className="inline-block px-4 py-1.5 rounded-full bg-white/15 border border-white/25 backdrop-blur-xs text-[11px] sm:text-xs font-semibold tracking-wider uppercase text-white">
-            {hero.kicker}
-          </span>
+        {hero.subtitle && (
+          <motion.p
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="text-base sm:text-xl lg:text-2xl font-bold tracking-[0.18em] uppercase text-sky-100 drop-shadow-xs"
+          >
+            {hero.subtitle}
+          </motion.p>
         )}
 
-        <h1 className="mt-5 font-serif text-3xl sm:text-5xl lg:text-[54px] font-bold tracking-tight leading-tight text-white drop-shadow-sm text-balance">
-          {hero.title}
+        {hero.kicker && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+            className="mt-3 inline-block px-4 py-1.5 rounded-full bg-white/15 border border-white/25 backdrop-blur-xs text-[11px] sm:text-xs font-semibold tracking-[0.18em] uppercase text-white"
+          >
+            {hero.kicker}
+          </motion.span>
+        )}
+
+        <h1
+          aria-label={hero.title}
+          className="mt-5 font-sans font-extrabold lining-nums text-[clamp(2.15rem,4.7vw,3.75rem)] tracking-tight leading-[1.1] text-balance flex flex-wrap items-center justify-center gap-x-3 sm:gap-x-4"
+        >
+          {titleWords.map((word, idx) => (
+            <motion.span
+              key={`${word}-${idx}`}
+              initial={{ opacity: 0, y: 22 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.55,
+                delay: 0.14 + idx * 0.09,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+              className="inline-block hero-title-shimmer"
+            >
+              {word}
+            </motion.span>
+          ))}
         </h1>
 
-        {hero.subtitle && (
-          <p className="mt-3 text-base sm:text-xl font-medium text-white/90 max-w-2xl text-balance">
-            {hero.subtitle}
-          </p>
-        )}
-
-        <div className="mt-7">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.42, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-8"
+        >
           <button
             type="button"
             onClick={onExploreClick}
@@ -113,11 +151,16 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <LayoutGrid className="w-4 h-4 text-slate-800" aria-hidden="true" />
             <span>{hero.ctaLabel || 'Jelajahi Layanan'}</span>
           </button>
-        </div>
+        </motion.div>
 
-        {/* 3 Glassmorphic Stat Cards */}
-        <div className="mt-10 sm:mt-12 grid grid-cols-3 gap-2.5 sm:gap-5 max-w-xl w-full">
-          <div className="rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 px-3 py-3.5 sm:px-5 sm:py-4 text-center">
+        {/* 2 Glassmorphic Stat Cards (24/7 Akses Online removed) */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-10 sm:mt-12 grid grid-cols-2 gap-3 sm:gap-5 max-w-md w-full"
+        >
+          <div className="rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 px-4 py-4 sm:px-5 sm:py-4 text-center">
             <div className="text-xl sm:text-3xl font-extrabold text-white tabular-nums leading-none">
               {visibleServicesCount}
             </div>
@@ -126,24 +169,15 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </div>
           </div>
 
-          <div className="rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 px-3 py-3.5 sm:px-5 sm:py-4 text-center">
+          <div className="rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 px-4 py-4 sm:px-5 sm:py-4 text-center">
             <div className="text-xl sm:text-3xl font-extrabold text-white tabular-nums leading-none">
-              {hero.stat2Value}
+              {hero.stat3Value || '100%'}
             </div>
             <div className="mt-1.5 text-[11px] sm:text-xs font-medium text-white/85">
-              {hero.stat2Label}
+              {hero.stat3Label || 'Terintegrasi'}
             </div>
           </div>
-
-          <div className="rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 px-3 py-3.5 sm:px-5 sm:py-4 text-center">
-            <div className="text-xl sm:text-3xl font-extrabold text-white tabular-nums leading-none">
-              {hero.stat3Value}
-            </div>
-            <div className="mt-1.5 text-[11px] sm:text-xs font-medium text-white/85">
-              {hero.stat3Label}
-            </div>
-          </div>
-        </div>
+        </motion.div>
 
         {/* Interactive Slideshow Indicators (only when multiple images exist) */}
         {images.length > 1 && (

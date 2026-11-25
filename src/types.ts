@@ -39,13 +39,35 @@ export interface HeroInfo {
   stat3Label: string;
 }
 
+export interface PrincipalProfileInfo {
+  visible: boolean;
+  sectionTitle: string;
+  principalName: string;
+  principalTitle: string;
+  principalNip: string;
+  photoUrl: string;
+  greetingTitle: string;
+  greetingMessage: string;
+  visionTitle: string;
+  visionText: string;
+  missionTitle: string;
+  missionItems: string[];
+}
+
+export interface AboutExtraItem {
+  id: string;
+  label: string;
+  value: string;
+}
+
 export interface AboutInfo {
   title: string;
   description: string;
   address: string;
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
   serviceHours: string;
+  extraItems: AboutExtraItem[];
 }
 
 export interface LayoutSettings {
@@ -57,6 +79,7 @@ export interface LayoutSettings {
 export interface PortalConfig {
   school: SchoolInfo;
   hero: HeroInfo;
+  leadership: PrincipalProfileInfo;
   about: AboutInfo;
   layout: LayoutSettings;
   services: ServiceItem[];

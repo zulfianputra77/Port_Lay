@@ -19,23 +19,23 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
       {toasts.map((toast) => {
         const styleMap = {
           info: {
-            wrapper: 'bg-white border-blue-200 text-slate-800',
-            iconWrap: 'text-blue-600',
+            wrapper: 'bg-white dark:bg-slate-900 border-blue-200 dark:border-sky-800 text-slate-800 dark:text-slate-100',
+            iconWrap: 'text-blue-600 dark:text-sky-400',
             Icon: Info,
           },
           success: {
-            wrapper: 'bg-white border-emerald-200 text-slate-800',
-            iconWrap: 'text-emerald-600',
+            wrapper: 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-800 text-slate-800 dark:text-slate-100',
+            iconWrap: 'text-emerald-600 dark:text-emerald-400',
             Icon: CheckCircle2,
           },
           warning: {
-            wrapper: 'bg-white border-amber-200 text-slate-800',
-            iconWrap: 'text-amber-600',
+            wrapper: 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-100',
+            iconWrap: 'text-amber-600 dark:text-amber-400',
             Icon: AlertCircle,
           },
           error: {
-            wrapper: 'bg-white border-rose-200 text-slate-800',
-            iconWrap: 'text-rose-600',
+            wrapper: 'bg-white dark:bg-slate-900 border-rose-200 dark:border-rose-800 text-slate-800 dark:text-slate-100',
+            iconWrap: 'text-rose-600 dark:text-rose-400',
             Icon: XCircle,
           },
         }[toast.type];

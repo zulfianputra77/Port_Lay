@@ -72,21 +72,21 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             />
           </div>
           <div className="flex-1 min-w-0 flex flex-col h-full">
-            <h3 className="text-base font-bold text-slate-900 tracking-tight truncate">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight truncate">
               {service.name}
             </h3>
             {service.subtitle && (
-              <p className="text-xs font-medium text-slate-500 mt-0.5 truncate">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                 {service.subtitle}
               </p>
             )}
             {service.description && (
-              <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed line-clamp-2 flex-1">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed line-clamp-2 flex-1">
                 {service.description}
               </p>
             )}
             <div className="mt-3 pt-1 flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 group-hover:text-blue-700 transition-colors">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 dark:text-sky-400 group-hover:text-blue-700 dark:group-hover:text-sky-300 transition-colors">
                 <span>Buka</span>
                 <ArrowRight
                   className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1"
@@ -94,7 +94,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                 />
               </span>
               {hasValidUrl && openInNewTab && !isAdminMode && (
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
               )}
             </div>
           </div>
@@ -118,17 +118,17 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
               />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base font-bold text-slate-900 tracking-tight truncate">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight truncate">
                 {service.name}
               </h3>
               {service.subtitle && (
-                <p className="text-xs font-medium text-slate-500 truncate mt-0.5">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate mt-0.5">
                   {service.subtitle}
                 </p>
               )}
             </div>
           </div>
-          <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 group-hover:text-blue-700 shrink-0 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 dark:text-sky-400 group-hover:text-blue-700 dark:group-hover:text-sky-300 shrink-0 whitespace-nowrap">
             <span>Buka</span>
             <ArrowRight
               className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1"
@@ -155,23 +155,23 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
         </div>
 
         <div className="mt-5 flex-1">
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight leading-snug">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight leading-snug">
             {service.name}
           </h3>
           {service.subtitle && (
-            <p className="text-xs font-medium text-slate-500 mt-1">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
               {service.subtitle}
             </p>
           )}
           {service.description && (
-            <p className="text-sm text-slate-600 mt-3 leading-relaxed">
+            <p className="text-sm text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
               {service.description}
             </p>
           )}
         </div>
 
-        <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 group-hover:text-blue-700 transition-colors">
+        <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 dark:text-sky-400 group-hover:text-blue-700 dark:group-hover:text-sky-300 transition-colors">
             <span>Buka</span>
             <ArrowRight
               className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1"
@@ -179,7 +179,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             />
           </span>
           {hasValidUrl && openInNewTab && !isAdminMode && (
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
           )}
         </div>
       </div>
@@ -188,7 +188,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
 
   // Visitor Mode: Interactive Link or Toast-trigger Button
   if (!isAdminMode) {
-    const baseCardClasses = `group block w-full text-left bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+    const baseCardClasses = `group block w-full text-left bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md dark:hover:border-slate-700 hover:-translate-y-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 ${
       cardStyle === 'minimal' ? 'p-4 sm:p-5' : 'p-6'
     }`;
 
@@ -223,30 +223,30 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       onDragStart={() => onDragStart(index)}
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={() => onDrop(index)}
-      className={`group relative flex flex-col bg-white rounded-2xl border shadow-sm transition-all duration-200 ${
+      className={`group relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl border shadow-sm transition-all duration-200 ${
         cardStyle === 'minimal' ? 'p-4 sm:p-5' : 'p-6'
       } ${
         service.visible
-          ? 'border-slate-200/90'
-          : 'border-dashed border-slate-300 bg-slate-50/80 opacity-75'
+          ? 'border-slate-200/90 dark:border-slate-800'
+          : 'border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 opacity-75'
       } ${isDragging ? 'ring-2 ring-blue-500 scale-[0.98]' : ''}`}
     >
       {/* Top Admin Toolbar */}
-      <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+      <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 min-w-0">
           <GripVertical
-            className="w-4 h-4 text-slate-400 cursor-grab active:cursor-grabbing shrink-0"
+            className="w-4 h-4 text-slate-400 dark:text-slate-500 cursor-grab active:cursor-grabbing shrink-0"
             aria-hidden="true"
           />
           <span className="font-medium tabular-nums">#{index + 1}</span>
           <span aria-hidden="true">·</span>
-          <span className={`truncate ${hasValidUrl ? 'text-emerald-700' : 'text-amber-700'}`}>
+          <span className={`truncate ${hasValidUrl ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
             {hasValidUrl ? 'Tautan aktif' : 'Link kosong'}
           </span>
           {!service.visible && (
             <>
               <span aria-hidden="true">·</span>
-              <span className="text-slate-600 font-medium">Tersembunyi</span>
+              <span className="text-slate-600 dark:text-slate-400 font-medium">Tersembunyi</span>
             </>
           )}
         </div>
@@ -256,7 +256,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             type="button"
             onClick={() => onMove(index, -1)}
             disabled={index === 0}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             title="Geser maju"
             aria-label={`Geser ${service.name} maju`}
           >
@@ -266,7 +266,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             type="button"
             onClick={() => onMove(index, 1)}
             disabled={index === totalCount - 1}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             title="Geser mundur"
             aria-label={`Geser ${service.name} mundur`}
           >
@@ -275,11 +275,11 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
           <button
             type="button"
             onClick={() => onToggleVisibility(service.id)}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title={service.visible ? 'Sembunyikan kartu' : 'Tampilkan kartu'}
             aria-label={service.visible ? `Sembunyikan ${service.name}` : `Tampilkan ${service.name}`}
           >
-            {service.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-amber-600" />}
+            {service.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-amber-600 dark:text-amber-400" />}
           </button>
         </div>
       </div>
@@ -288,15 +288,15 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       <div className="flex-1">{cardInnerContent()}</div>
 
       {/* Bottom Admin Action Buttons */}
-      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
         {confirmingDelete ? (
           <div className="flex items-center justify-between w-full gap-2">
-            <span className="text-xs font-medium text-rose-700">Hapus layanan ini?</span>
+            <span className="text-xs font-medium text-rose-700 dark:text-rose-400">Hapus layanan ini?</span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(false)}
-                className="px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
               >
                 Batal
               </button>
@@ -314,7 +314,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             <button
               type="button"
               onClick={() => onEdit(service)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 dark:text-sky-300 bg-blue-50 dark:bg-sky-950/60 hover:bg-blue-100 dark:hover:bg-sky-900/70 rounded-xl transition-colors"
             >
               <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Edit Kartu</span>
@@ -322,7 +322,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/70 rounded-xl transition-colors"
               aria-label={`Hapus ${service.name}`}
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />

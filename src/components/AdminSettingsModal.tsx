@@ -17,9 +17,14 @@ import {
   Sliders,
   Trash2,
   Upload,
+  UserCheck,
   X,
 } from 'lucide-react';
-import { DEFAULT_HERO_BACKGROUND, DEFAULT_SCHOOL_LOGO } from '../data/defaultConfig';
+import {
+  DEFAULT_HERO_BACKGROUND,
+  DEFAULT_PRINCIPAL_PHOTO,
+  DEFAULT_SCHOOL_LOGO,
+} from '../data/defaultConfig';
 import {
   AboutInfo,
   CardStyle,
@@ -28,9 +33,14 @@ import {
   LayoutColumns,
   LayoutSettings,
   PortalConfig,
+  PrincipalProfileInfo,
   SchoolInfo,
 } from '../types';
 import { EmbedFormat, generateEmbedCode } from '../utils/embedGenerator';
+import {
+  generateGasBackendScript,
+  generateSingleFileFrontendHtml,
+} from '../utils/gasGenerator';
 import {
   isValidUrl,
   normalizeImageUrl,
@@ -38,16 +48,24 @@ import {
   validateImportedJson,
 } from '../utils/storage';
 
-export type AdminSettingsTab = 'layout' | 'header' | 'embed' | 'security';
+export type AdminSettingsTab = 'layout' | 'header' | 'leadership' | 'embed' | 'security';
+type ExportOutputKind = 'single_frontend' | 'gas_backend' | 'snippet';
 
 interface AdminSettingsModalProps {
   isOpen: boolean;
   initialTab: AdminSettingsTab;
   config: PortalConfig;
+  envCredentialsOverride: boolean;
+  adminUsernameHint: string;
   onClose: () => void;
   onUpdateLayout: (layout: LayoutSettings) => void;
   onUpdateIdentity: (school: SchoolInfo, hero: HeroInfo, about: AboutInfo) => void;
-  onChangePin: (newPin: string) => void;
+  onUpdateLeadership: (leadership: PrincipalProfileInfo) => void;
+  onChangeCredentials: (
+    currentPassword: string,
+    newUsername: string,
+    newPassword: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   onImportConfig: (imported: PortalConfig) => void;
   onResetDefaults: () => void;
   onNotify: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -57,10 +75,13 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   isOpen,
   initialTab,
   config,
+  envCredentialsOverride,
+  adminUsernameHint,
   onClose,
   onUpdateLayout,
   onUpdateIdentity,
-  onChangePin,
+  onUpdateLeadership,
+  onChangeCredentials,
   onImportConfig,
   onResetDefaults,
   onNotify,
@@ -77,17 +98,25 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const heroBgFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Leadership / Principal Profile & Vision Mission form state
+  const [leadershipForm, setLeadershipForm] = useState<PrincipalProfileInfo>(config.leadership);
+  const [missionText, setMissionText] = useState((config.leadership.missionItems || []).join('\n'));
+  const [principalPhotoError, setPrincipalPhotoError] = useState('');
+  const principalPhotoInputRef = useRef<HTMLInputElement>(null);
+
   // Embed tab state
-  const [embedFormat, setEmbedFormat] = useState<EmbedFormat>('full_document');
+  const [embedKind, setEmbedKind] = useState<ExportOutputKind>('single_frontend');
   const [embedLogoOverride, setEmbedLogoOverride] = useState('');
   const [embedHeroBgOverride, setEmbedHeroBgOverride] = useState('');
   const [copiedEmbed, setCopiedEmbed] = useState(false);
 
-  // Security PIN form state
-  const [oldPin, setOldPin] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [pinError, setPinError] = useState('');
+  // Security credentials form state
+  const [adminUsernameInput, setAdminUsernameInput] = useState(adminUsernameHint);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [credError, setCredError] = useState('');
+  const [credSaving, setCredSaving] = useState(false);
 
   // Import/Reset states
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -104,27 +133,57 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             ? config.hero.backgroundImages
             : [config.hero.backgroundUrl || DEFAULT_HERO_BACKGROUND],
       });
-      setAboutForm(config.about);
+      setAboutForm({
+        ...config.about,
+        extraItems: config.about.extraItems || [],
+      });
+      setLeadershipForm(config.leadership);
+      setMissionText((config.leadership.missionItems || []).join('\n'));
       setLogoUploadError('');
       setHeroBgUploadError('');
+      setPrincipalPhotoError('');
       setNewHeroLink('');
-      setOldPin('');
-      setNewPin('');
-      setConfirmPin('');
-      setPinError('');
+      setAdminUsernameInput(adminUsernameHint);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setCredError('');
+      setCredSaving(false);
       setConfirmReset(false);
       setCopiedEmbed(false);
     }
-  }, [isOpen, initialTab, config]);
+  }, [isOpen, initialTab, config, adminUsernameHint]);
 
-  const generatedEmbedHtml = useMemo(() => {
+  const generatedOutputCode = useMemo(() => {
     if (!isOpen || activeTab !== 'embed') return '';
-    return generateEmbedCode(config, {
-      format: embedFormat,
-      publicLogoUrl: embedLogoOverride,
-      publicHeroBgUrl: embedHeroBgOverride,
-    });
-  }, [isOpen, activeTab, config, embedFormat, embedLogoOverride, embedHeroBgOverride]);
+    const overriddenConfig: PortalConfig = {
+      ...config,
+      school: {
+        ...config.school,
+        logoUrl: embedLogoOverride.trim() || config.school.logoUrl,
+      },
+      hero: {
+        ...config.hero,
+        backgroundUrl: embedHeroBgOverride.trim() || config.hero.backgroundUrl,
+        backgroundImages: embedHeroBgOverride.trim()
+          ? [normalizeImageUrl(embedHeroBgOverride)]
+          : config.hero.backgroundImages,
+      },
+    };
+    if (embedKind === 'gas_backend') {
+      const { adminPin: _omit, ...publicCfg } = overriddenConfig;
+      return generateGasBackendScript(publicCfg);
+    }
+    if (embedKind === 'snippet') {
+      return generateEmbedCode(overriddenConfig, {
+        format: 'snippet' as EmbedFormat,
+        publicLogoUrl: embedLogoOverride,
+        publicHeroBgUrl: embedHeroBgOverride,
+      });
+    }
+    const { adminPin: _omit, ...publicCfg } = overriddenConfig;
+    return generateSingleFileFrontendHtml(publicCfg);
+  }, [isOpen, activeTab, config, embedKind, embedLogoOverride, embedHeroBgOverride]);
 
   if (!isOpen) return null;
 
@@ -225,6 +284,36 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
     return 'URL Gambar Eksternal';
   };
 
+  const handleAddAboutExtraItem = () => {
+    setAboutForm((prev) => ({
+      ...prev,
+      extraItems: [
+        ...(prev.extraItems || []),
+        {
+          id: `about-extra-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          label: '',
+          value: '',
+        },
+      ],
+    }));
+  };
+
+  const handleUpdateAboutExtraItem = (id: string, field: 'label' | 'value', val: string) => {
+    setAboutForm((prev) => ({
+      ...prev,
+      extraItems: (prev.extraItems || []).map((item) =>
+        item.id === id ? { ...item, [field]: val } : item
+      ),
+    }));
+  };
+
+  const handleRemoveAboutExtraItem = (id: string) => {
+    setAboutForm((prev) => ({
+      ...prev,
+      extraItems: (prev.extraItems || []).filter((item) => item.id !== id),
+    }));
+  };
+
   const handleSaveIdentity = (e: React.FormEvent) => {
     e.preventDefault();
     if (!schoolForm.name.trim()) {
@@ -236,6 +325,14 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
       .filter((u) => u.length > 0);
     const finalImages =
       normalizedImages.length > 0 ? normalizedImages : [DEFAULT_HERO_BACKGROUND];
+
+    const cleanedExtraItems = (aboutForm.extraItems || [])
+      .map((item) => ({
+        id: item.id,
+        label: item.label.trim(),
+        value: item.value.trim(),
+      }))
+      .filter((item) => item.label.length > 0 || item.value.length > 0);
 
     onUpdateIdentity(
       {
@@ -251,8 +348,8 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
         backgroundUrl: finalImages[0],
         backgroundImages: finalImages,
         slideIntervalSeconds: heroForm.slideIntervalSeconds || 15,
-        stat2Value: heroForm.stat2Value.trim() || '24/7',
-        stat2Label: heroForm.stat2Label.trim() || 'Akses Online',
+        stat2Value: '',
+        stat2Label: '',
         stat3Value: heroForm.stat3Value.trim() || '100%',
         stat3Label: heroForm.stat3Label.trim() || 'Terintegrasi',
       },
@@ -260,9 +357,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
         title: aboutForm.title.trim() || 'Tentang Portal',
         description: aboutForm.description.trim(),
         address: aboutForm.address.trim(),
-        email: aboutForm.email.trim(),
-        phone: aboutForm.phone.trim(),
+        email: '',
+        phone: '',
         serviceHours: aboutForm.serviceHours.trim(),
+        extraItems: cleanedExtraItems,
       }
     );
     onNotify('Informasi Hero, Header & Tentang berhasil diperbarui.', 'success');
@@ -270,57 +368,120 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
   const handleCopyEmbedCode = async () => {
     try {
-      await navigator.clipboard.writeText(generatedEmbedHtml);
+      await navigator.clipboard.writeText(generatedOutputCode);
       setCopiedEmbed(true);
-      onNotify('Kode HTML berhasil disalin! Siap ditempel ke Google Sites atau Blogger.', 'success');
+      onNotify('Kode lengkap berhasil disalin ke clipboard.', 'success');
       setTimeout(() => setCopiedEmbed(false), 3000);
     } catch {
-      onNotify('Gagal menyalin otomatis. Gunakan tombol Unduh HTML atau salin manual dari kotak kode.', 'warning');
+      onNotify('Gagal menyalin otomatis. Gunakan tombol Unduh File atau salin manual dari kotak kode.', 'warning');
     }
   };
 
-  const handleDownloadEmbedHtml = () => {
-    const fullDoc = generateEmbedCode(config, {
-      format: 'full_document',
-      publicLogoUrl: embedLogoOverride,
-      publicHeroBgUrl: embedHeroBgOverride,
-    });
-    const blob = new Blob([fullDoc], { type: 'text/html;charset=utf-8' });
+  const handleDownloadOutputFile = () => {
+    const isGas = embedKind === 'gas_backend';
+    const mime = isGas ? 'text/plain;charset=utf-8' : 'text/html;charset=utf-8';
+    const filename = isGas ? 'Code.gs' : 'Index.html';
+    const blob = new Blob([generatedOutputCode], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'portal-smpn4-jambi-embed.html';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    onNotify('File HTML berhasil diunduh.', 'success');
+    onNotify(`File ${filename} berhasil diunduh.`, 'success');
   };
 
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePrincipalPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPrincipalPhotoError('');
+    try {
+      const dataUrl = await processImageFileToDataUrl(file, 720);
+      setLeadershipForm((prev) => ({ ...prev, photoUrl: dataUrl }));
+    } catch (err) {
+      setPrincipalPhotoError(
+        err instanceof Error ? err.message : 'Gagal mengunggah foto kepala sekolah.'
+      );
+    } finally {
+      if (principalPhotoInputRef.current) principalPhotoInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveLeadership = (e: React.FormEvent) => {
     e.preventDefault();
-    if (oldPin !== config.adminPin) {
-      setPinError('PIN lama tidak sesuai.');
+    if (!leadershipForm.principalName.trim()) {
+      onNotify('Nama Kepala Sekolah tidak boleh kosong.', 'error');
       return;
     }
-    if (!/^\d{4,6}$/.test(newPin)) {
-      setPinError('PIN baru harus terdiri dari 4 hingga 6 digit angka.');
+    const normalizedPhoto = normalizeImageUrl(leadershipForm.photoUrl) || DEFAULT_PRINCIPAL_PHOTO;
+    const parsedMissions = missionText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    onUpdateLeadership({
+      visible: leadershipForm.visible,
+      sectionTitle: leadershipForm.sectionTitle.trim() || 'Profil Kepala Sekolah & Visi Misi',
+      principalName: leadershipForm.principalName.trim(),
+      principalTitle: leadershipForm.principalTitle.trim() || 'Kepala Sekolah',
+      principalNip: leadershipForm.principalNip.trim(),
+      photoUrl: normalizedPhoto,
+      greetingTitle: leadershipForm.greetingTitle.trim() || 'Sambutan Kepala Sekolah',
+      greetingMessage: leadershipForm.greetingMessage.trim(),
+      visionTitle: leadershipForm.visionTitle.trim() || 'Visi Sekolah',
+      visionText: leadershipForm.visionText.trim(),
+      missionTitle: leadershipForm.missionTitle.trim() || 'Misi Sekolah',
+      missionItems: parsedMissions,
+    });
+    onNotify('Profil Kepala Sekolah, Kata Sambutan & Visi Misi berhasil disimpan.', 'success');
+  };
+
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUser = adminUsernameInput.trim().toLowerCase();
+    if (!/^[a-zA-Z0-9._@-]{3,64}$/.test(cleanUser)) {
+      setCredError('Username minimal 3 karakter (huruf, angka, titik, garis bawah, atau @).');
       return;
     }
-    if (newPin !== confirmPin) {
-      setPinError('Konfirmasi PIN baru tidak cocok.');
+    if (!currentPassword.trim()) {
+      setCredError('Masukkan password saat ini untuk konfirmasi.');
       return;
     }
-    onChangePin(newPin);
-    setOldPin('');
-    setNewPin('');
-    setConfirmPin('');
-    setPinError('');
-    onNotify('PIN Admin berhasil diperbarui.', 'success');
+    if (newPassword.trim() && newPassword.trim().length < 6) {
+      setCredError('Password baru minimal harus 6 karakter.');
+      return;
+    }
+    if (newPassword.trim() && newPassword.trim() !== confirmPassword.trim()) {
+      setCredError('Konfirmasi password baru tidak cocok.');
+      return;
+    }
+
+    setCredSaving(true);
+    setCredError('');
+    const result = await onChangeCredentials(
+      currentPassword.trim(),
+      cleanUser,
+      newPassword.trim()
+    );
+    setCredSaving(false);
+
+    if (!result.ok) {
+      setCredError(result.error || 'Gagal memperbarui akun Admin.');
+      return;
+    }
+
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setCredError('');
+    onNotify('Username dan password Admin berhasil diperbarui di database.', 'success');
   };
 
   const handleExportJson = () => {
-    const exportPayload = JSON.stringify(config, null, 2);
+    const { adminPin: _omit, ...safeExport } = config;
+    const exportPayload = JSON.stringify(safeExport, null, 2);
     const blob = new Blob([exportPayload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -354,8 +515,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const tabs: { id: AdminSettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'layout', label: 'Tata Letak', icon: <LayoutGrid className="w-4 h-4" /> },
     { id: 'header', label: 'Hero, Header & Tentang', icon: <Sliders className="w-4 h-4" /> },
+    { id: 'leadership', label: 'Kepala Sekolah & Visi Misi', icon: <UserCheck className="w-4 h-4" /> },
     { id: 'embed', label: 'Embed Sites & Blogger', icon: <Code2 className="w-4 h-4" /> },
-    { id: 'security', label: 'PIN & Backup', icon: <KeyRound className="w-4 h-4" /> },
+    { id: 'security', label: 'Akses & Backup', icon: <KeyRound className="w-4 h-4" /> },
   ];
 
   return (
@@ -707,8 +869,23 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
+                    <label htmlFor="hero-subtitle" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Teks Baris 1 (Atas)
+                    </label>
+                    <input
+                      id="hero-subtitle"
+                      type="text"
+                      value={heroForm.subtitle}
+                      onChange={(e) =>
+                        setHeroForm((prev) => ({ ...prev, subtitle: e.target.value }))
+                      }
+                      placeholder="SELAMAT DATANG DI"
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
                     <label htmlFor="hero-kicker" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Label Atas Hero
+                      Teks Baris 2 (Badge Portal)
                     </label>
                     <input
                       id="hero-kicker"
@@ -717,6 +894,22 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       onChange={(e) =>
                         setHeroForm((prev) => ({ ...prev, kicker: e.target.value }))
                       }
+                      placeholder="PORTAL RESMI"
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="hero-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Nama Sekolah Hero (Animasi)
+                    </label>
+                    <input
+                      id="hero-title"
+                      type="text"
+                      value={heroForm.title}
+                      onChange={(e) =>
+                        setHeroForm((prev) => ({ ...prev, title: e.target.value }))
+                      }
+                      placeholder="SMP NEGERI 004 JAMBI"
                       className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -730,34 +923,6 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       value={heroForm.ctaLabel}
                       onChange={(e) =>
                         setHeroForm((prev) => ({ ...prev, ctaLabel: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="hero-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Judul Besar Hero
-                    </label>
-                    <input
-                      id="hero-title"
-                      type="text"
-                      value={heroForm.title}
-                      onChange={(e) =>
-                        setHeroForm((prev) => ({ ...prev, title: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="hero-subtitle" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Subjudul Hero
-                    </label>
-                    <input
-                      id="hero-subtitle"
-                      type="text"
-                      value={heroForm.subtitle}
-                      onChange={(e) =>
-                        setHeroForm((prev) => ({ ...prev, subtitle: e.target.value }))
                       }
                       className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -859,7 +1024,17 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
               {/* About Page Content */}
               <div className="pt-4 border-t border-slate-100 space-y-4">
-                <h3 className="text-sm font-bold text-slate-900">Konten Bagian Tentang</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-900">Konten Bagian Tentang</h3>
+                  <button
+                    type="button"
+                    onClick={handleAddAboutExtraItem}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Tambah</span>
+                  </button>
+                </div>
                 <div>
                   <label htmlFor="about-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Judul Bagian Tentang
@@ -917,35 +1092,62 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                       className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
-                    <label htmlFor="about-email" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Surel Resmi
-                    </label>
-                    <input
-                      id="about-email"
-                      type="email"
-                      value={aboutForm.email}
-                      onChange={(e) =>
-                        setAboutForm((prev) => ({ ...prev, email: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="about-phone" className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Telepon
-                    </label>
-                    <input
-                      id="about-phone"
-                      type="text"
-                      value={aboutForm.phone}
-                      onChange={(e) =>
-                        setAboutForm((prev) => ({ ...prev, phone: e.target.value }))
-                      }
-                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
                 </div>
+
+                {/* Dynamic Extra Items added via Tambah button */}
+                {(aboutForm.extraItems || []).length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <p className="text-xs font-semibold text-slate-700">
+                      Informasi Tambahan
+                    </p>
+                    {(aboutForm.extraItems || []).map((item, idx) => (
+                      <div
+                        key={item.id}
+                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-3 items-start"
+                      >
+                        <div className="sm:col-span-4">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Label Info #{idx + 1}
+                          </label>
+                          <input
+                            type="text"
+                            value={item.label}
+                            onChange={(e) =>
+                              handleUpdateAboutExtraItem(item.id, 'label', e.target.value)
+                            }
+                            placeholder="Contoh: Akreditasi / NPSN"
+                            className="w-full px-3 py-1.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="sm:col-span-7">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            Isi / Keterangan
+                          </label>
+                          <input
+                            type="text"
+                            value={item.value}
+                            onChange={(e) =>
+                              handleUpdateAboutExtraItem(item.id, 'value', e.target.value)
+                            }
+                            placeholder="Masukkan keterangan..."
+                            className="w-full px-3 py-1.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="sm:col-span-1 flex sm:justify-end sm:pt-5">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAboutExtraItem(item.id)}
+                            className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50"
+                            title="Hapus informasi ini"
+                            aria-label={`Hapus informasi tambahan ${idx + 1}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-2">
@@ -959,45 +1161,323 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
             </form>
           )}
 
+          {activeTab === 'leadership' && (
+            <form onSubmit={handleSaveLeadership} className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Tampilkan Bagian Profil Kepala Sekolah &amp; Visi Misi
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Atur apakah profil kepala sekolah, kata sambutan, serta visi dan misi tampil di beranda.
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2.5 cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={leadershipForm.visible}
+                    onChange={(e) =>
+                      setLeadershipForm((prev) => ({ ...prev, visible: e.target.checked }))
+                    }
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-xs sm:text-sm font-semibold text-slate-800">
+                    {leadershipForm.visible ? 'Ditampilkan' : 'Disembunyikan'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Foto & Identitas Kepala Sekolah */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-900">Foto &amp; Identitas Kepala Sekolah</h3>
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="w-24 h-32 rounded-xl overflow-hidden border border-slate-300 bg-white flex items-center justify-center shrink-0">
+                    {leadershipForm.photoUrl ? (
+                      <img
+                        src={normalizeImageUrl(leadershipForm.photoUrl)}
+                        alt="Preview Foto Kepala Sekolah"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover object-top"
+                      />
+                    ) : (
+                      <UserCheck className="w-8 h-8 text-slate-400" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={principalPhotoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePrincipalPhotoUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => principalPhotoInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Unggah Foto Kepala Sekolah</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLeadershipForm((prev) => ({
+                            ...prev,
+                            photoUrl: DEFAULT_PRINCIPAL_PHOTO,
+                          }))
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Foto Bawaan</span>
+                      </button>
+                    </div>
+                    <div>
+                      <label htmlFor="lead-photo-url" className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Atau tempel URL foto / link Google Drive
+                      </label>
+                      <input
+                        id="lead-photo-url"
+                        type="text"
+                        value={leadershipForm.photoUrl}
+                        onChange={(e) =>
+                          setLeadershipForm((prev) => ({ ...prev, photoUrl: e.target.value }))
+                        }
+                        placeholder="https://drive.google.com/file/d/..."
+                        className="w-full px-3 py-1.5 text-xs text-slate-700 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    {principalPhotoError && (
+                      <p className="text-xs text-rose-600 font-medium">{principalPhotoError}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label htmlFor="lead-sec-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Judul Bagian di Beranda
+                    </label>
+                    <input
+                      id="lead-sec-title"
+                      type="text"
+                      value={leadershipForm.sectionTitle}
+                      onChange={(e) =>
+                        setLeadershipForm((prev) => ({ ...prev, sectionTitle: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="lead-name" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Nama Kepala Sekolah &amp; Gelar
+                    </label>
+                    <input
+                      id="lead-name"
+                      type="text"
+                      required
+                      value={leadershipForm.principalName}
+                      onChange={(e) =>
+                        setLeadershipForm((prev) => ({ ...prev, principalName: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="lead-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Jabatan
+                    </label>
+                    <input
+                      id="lead-title"
+                      type="text"
+                      value={leadershipForm.principalTitle}
+                      onChange={(e) =>
+                        setLeadershipForm((prev) => ({ ...prev, principalTitle: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor="lead-nip" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      NIP Kepala Sekolah (Opsional)
+                    </label>
+                    <input
+                      id="lead-nip"
+                      type="text"
+                      value={leadershipForm.principalNip}
+                      onChange={(e) =>
+                        setLeadershipForm((prev) => ({ ...prev, principalNip: e.target.value }))
+                      }
+                      placeholder="Contoh: 19720514 199802 1 002"
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Kata Sambutan */}
+              <div className="pt-4 border-t border-slate-100 space-y-4">
+                <h3 className="text-sm font-bold text-slate-900">Kata Sambutan Kepala Sekolah</h3>
+                <div>
+                  <label htmlFor="lead-greet-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Judul Kata Sambutan
+                  </label>
+                  <input
+                    id="lead-greet-title"
+                    type="text"
+                    value={leadershipForm.greetingTitle}
+                    onChange={(e) =>
+                      setLeadershipForm((prev) => ({ ...prev, greetingTitle: e.target.value }))
+                    }
+                    className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lead-greet-msg" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Isi Kata Sambutan
+                  </label>
+                  <textarea
+                    id="lead-greet-msg"
+                    rows={5}
+                    value={leadershipForm.greetingMessage}
+                    onChange={(e) =>
+                      setLeadershipForm((prev) => ({ ...prev, greetingMessage: e.target.value }))
+                    }
+                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Visi & Misi Sekolah */}
+              <div className="pt-4 border-t border-slate-100 space-y-4">
+                <h3 className="text-sm font-bold text-slate-900">Visi &amp; Misi Sekolah</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="lead-vision-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Judul Visi
+                    </label>
+                    <input
+                      id="lead-vision-title"
+                      type="text"
+                      value={leadershipForm.visionTitle}
+                      onChange={(e) =>
+                        setLeadershipForm((prev) => ({ ...prev, visionTitle: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="lead-mission-title" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Judul Misi
+                    </label>
+                    <input
+                      id="lead-mission-title"
+                      type="text"
+                      value={leadershipForm.missionTitle}
+                      onChange={(e) =>
+                        setLeadershipForm((prev) => ({ ...prev, missionTitle: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="lead-vision-text" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Teks Visi Sekolah
+                  </label>
+                  <textarea
+                    id="lead-vision-text"
+                    rows={2}
+                    value={leadershipForm.visionText}
+                    onChange={(e) =>
+                      setLeadershipForm((prev) => ({ ...prev, visionText: e.target.value }))
+                    }
+                    className="w-full px-3.5 py-2 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lead-mission-items" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Daftar Poin Misi Sekolah (Tulis 1 poin misi per baris)
+                  </label>
+                  <textarea
+                    id="lead-mission-items"
+                    rows={5}
+                    value={missionText}
+                    onChange={(e) => setMissionText(e.target.value)}
+                    placeholder="Tulis setiap poin misi pada baris baru..."
+                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors"
+                >
+                  Simpan Profil &amp; Visi Misi
+                </button>
+              </div>
+            </form>
+          )}
+
           {activeTab === 'embed' && (
             <div className="space-y-5">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Kode Frontend Siap Semat (Google Sites &amp; Blogger)
+                  Script Backend (`Code.gs`) &amp; 1-File Frontend Lengkap (`Index.html`)
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Kode HTML mandiri ini sudah memuat seluruh layanan, ikon, warna, Hero Landing Page, pencarian, dan Mode Admin (`PIN: {config.adminPin}`) agar bisa langsung disematkan ke Google Sites maupun Blogger.
+                  Pilih antara <strong>1 File Frontend Lengkap</strong> (gabungan HTML + CSS + JS siap pakai untuk Google Apps Script, Google Sites, maupun Blogger) atau <strong>Script Backend Google Apps Script</strong> yang memiliki fungsi <code>setupDatabase()</code> untuk membuat database Google Sheets otomatis.
                 </p>
               </div>
 
               {/* Format Switcher */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
-                  onClick={() => setEmbedFormat('full_document')}
+                  onClick={() => setEmbedKind('single_frontend')}
                   className={`p-3.5 rounded-xl border text-left transition-all ${
-                    embedFormat === 'full_document'
+                    embedKind === 'single_frontend'
                       ? 'bg-blue-50 border-blue-600 text-blue-900 ring-1 ring-blue-600'
                       : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  <div className="text-sm font-bold">HTML Lengkap (&lt;!DOCTYPE html&gt;)</div>
+                  <div className="text-sm font-bold">Frontend 1 File (Index.html)</div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Cocok untuk <strong>Google Sites</strong> (Sisipkan &gt; Sematkan Kode) atau tema penuh Blogger.
+                    Gabungan lengkap HTML + CSS + JS. Siap untuk Apps Script &amp; Google Sites.
                   </p>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEmbedFormat('snippet')}
+                  onClick={() => setEmbedKind('gas_backend')}
                   className={`p-3.5 rounded-xl border text-left transition-all ${
-                    embedFormat === 'snippet'
+                    embedKind === 'gas_backend'
                       ? 'bg-blue-50 border-blue-600 text-blue-900 ring-1 ring-blue-600'
                       : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
                   }`}
                 >
-                  <div className="text-sm font-bold">Cuplikan HTML (Halaman / Gadget)</div>
+                  <div className="text-sm font-bold">Backend Script (Code.gs)</div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Cocok untuk <strong>Blogger</strong> (Tampilan HTML Postingan/Halaman atau Gadget HTML/JS).
+                    Berisi fungsi <code>setupDatabase()</code> otomatis ke Google Sheets + login Admin.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmbedKind('snippet')}
+                  className={`p-3.5 rounded-xl border text-left transition-all ${
+                    embedKind === 'snippet'
+                      ? 'bg-blue-50 border-blue-600 text-blue-900 ring-1 ring-blue-600'
+                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-bold">Cuplikan HTML Blogger</div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Tanpa tag <code>&lt;html&gt;</code> untuk Postingan/Halaman/Gadget Blogger.
                   </p>
                 </button>
               </div>
@@ -1005,21 +1485,18 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
               {/* Optional Public Image URL Overrides */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <p className="text-xs font-semibold text-slate-800">
-                  Opsional: Ganti URL Gambar Publik untuk Google Sites / Blogger
-                </p>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Jika ingin gambar background &amp; logo selalu tampil di domain luar (`sites.google.com` / `blogspot.com`), Anda dapat menempelkan URL gambar publik (`https://...`) atau mengunggah gambar langsung di tab <em>Hero, Header &amp; Tentang</em> (otomatis tertanam sebagai Base64).
+                  Opsional: URL Gambar Publik untuk Google Sites / Blogger / Apps Script
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      URL Foto Background Hero (Opsional)
+                      URL Foto Background Hero (Mendukung Google Drive)
                     </label>
                     <input
                       type="text"
                       value={embedHeroBgOverride}
                       onChange={(e) => setEmbedHeroBgOverride(e.target.value)}
-                      placeholder="https://blogger.googleusercontent.com/..."
+                      placeholder="https://drive.google.com/file/d/..."
                       className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -1060,44 +1537,45 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={handleDownloadEmbedHtml}
+                    onClick={handleDownloadOutputFile}
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors"
                   >
                     <Download className="w-4 h-4" aria-hidden="true" />
-                    <span>Unduh File .html</span>
+                    <span>
+                      Unduh {embedKind === 'gas_backend' ? 'Code.gs' : 'Index.html'}
+                    </span>
                   </button>
                 </div>
                 <span className="text-xs text-slate-500 tabular-nums">
-                  {generatedEmbedHtml.length.toLocaleString('id-ID')} karakter
+                  {generatedOutputCode.length.toLocaleString('id-ID')} karakter
                 </span>
               </div>
 
               <textarea
                 readOnly
-                value={generatedEmbedHtml}
+                value={generatedOutputCode}
                 onFocus={(e) => e.target.select()}
-                rows={9}
-                aria-label="Kode HTML siap semat untuk Google Sites dan Blogger"
+                rows={10}
+                aria-label="Kode lengkap siap salin"
                 className="w-full p-3.5 text-xs font-mono text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
 
               {/* Quick Guide */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
                 <div className="p-3.5 rounded-xl border border-slate-200 bg-white">
-                  <p className="font-bold text-slate-900 mb-1">Cara Pasang di Google Sites:</p>
+                  <p className="font-bold text-slate-900 mb-1">1. Setup Backend Google Apps Script:</p>
                   <ol className="list-decimal list-inside space-y-1">
-                    <li>Buka editor Google Sites Anda.</li>
-                    <li>Klik menu <strong>Sisipkan</strong> &gt; <strong>Sematkan</strong>.</li>
-                    <li>Pilih tab <strong>Sematkan kode</strong>.</li>
-                    <li>Tempel kode HTML Lengkap lalu klik <strong>Berikutnya &gt; Sisipkan</strong>.</li>
+                    <li>Buka <strong>script.google.com</strong> &rarr; Proyek Baru.</li>
+                    <li>Tempel <strong>Backend Script (Code.gs)</strong> ke file <code>Code.gs</code>.</li>
+                    <li>Buat file HTML bernama <code>Index</code>, tempel <strong>Frontend 1 File</strong>.</li>
+                    <li>Jalankan fungsi <code>setupDatabase</code> sekali, lalu <strong>Deploy &rarr; Web App</strong>.</li>
                   </ol>
                 </div>
                 <div className="p-3.5 rounded-xl border border-slate-200 bg-white">
-                  <p className="font-bold text-slate-900 mb-1">Cara Pasang di Blogger:</p>
+                  <p className="font-bold text-slate-900 mb-1">2. Pasang di Google Sites / Blogger:</p>
                   <ol className="list-decimal list-inside space-y-1">
-                    <li>Buka <strong>Halaman</strong> atau <strong>Postingan</strong> baru.</li>
-                    <li>Ubah editor dari <em>Tampilan Menulis</em> ke <strong>Tampilan HTML</strong>.</li>
-                    <li>Tempel kode <strong>Cuplikan HTML</strong> lalu publikasikan.</li>
+                    <li>Di <strong>Google Sites</strong>: Sisipkan &rarr; Sematkan URL Web App (atau Sematkan Kode HTML).</li>
+                    <li>Di <strong>Blogger</strong>: Gunakan <strong>Cuplikan HTML</strong> di Tampilan HTML halaman/postingan, atau sematkan <code>&lt;iframe&gt;</code> URL Web App.</li>
                   </ol>
                 </div>
               </div>
@@ -1106,85 +1584,105 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
           {activeTab === 'security' && (
             <div className="space-y-6">
-              <form onSubmit={handlePinSubmit} className="space-y-4">
+              <form onSubmit={handleCredentialsSubmit} className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Ubah PIN Admin</h3>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Ubah Username &amp; Password Admin
+                  </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Gunakan 4 hingga 6 digit angka untuk menjaga akses pengubahan portal.
+                    {envCredentialsOverride
+                      ? 'Username dan password admin saat ini dikelola melalui variabel lingkungan ADMIN_USERNAME & ADMIN_PASSWORD di server.'
+                      : 'Perbarui username atau password yang digunakan untuk masuk ke Mode Admin.'}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label htmlFor="pin-old" className="block text-xs font-semibold text-slate-700 mb-1">
-                      PIN Lama
-                    </label>
-                    <input
-                      id="pin-old"
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={oldPin}
-                      onChange={(e) => {
-                        setOldPin(e.target.value.replace(/\D/g, ''));
-                        if (pinError) setPinError('');
-                      }}
-                      placeholder="••••"
-                      className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="pin-new" className="block text-xs font-semibold text-slate-700 mb-1">
-                      PIN Baru
-                    </label>
-                    <input
-                      id="pin-new"
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={newPin}
-                      onChange={(e) => {
-                        setNewPin(e.target.value.replace(/\D/g, ''));
-                        if (pinError) setPinError('');
-                      }}
-                      placeholder="4–6 digit"
-                      className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="pin-confirm" className="block text-xs font-semibold text-slate-700 mb-1">
-                      Konfirmasi PIN Baru
-                    </label>
-                    <input
-                      id="pin-confirm"
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={confirmPin}
-                      onChange={(e) => {
-                        setConfirmPin(e.target.value.replace(/\D/g, ''));
-                        if (pinError) setPinError('');
-                      }}
-                      placeholder="Ulangi PIN"
-                      className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 tabular-nums"
-                    />
-                  </div>
-                </div>
+                {!envCredentialsOverride && (
+                  <>
+                    <div>
+                      <label htmlFor="cred-username" className="block text-xs font-semibold text-slate-700 mb-1">
+                        Username Admin
+                      </label>
+                      <input
+                        id="cred-username"
+                        type="text"
+                        value={adminUsernameInput}
+                        onChange={(e) => {
+                          setAdminUsernameInput(e.target.value);
+                          if (credError) setCredError('');
+                        }}
+                        placeholder="Contoh: admin atau admin_smpn4"
+                        className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
 
-                {pinError && (
-                  <p className="text-xs font-medium text-rose-600" role="alert">
-                    {pinError}
-                  </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label htmlFor="cred-old-pass" className="block text-xs font-semibold text-slate-700 mb-1">
+                          Password Saat Ini
+                        </label>
+                        <input
+                          id="cred-old-pass"
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => {
+                            setCurrentPassword(e.target.value);
+                            if (credError) setCredError('');
+                          }}
+                          placeholder="Password lama"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="cred-new-pass" className="block text-xs font-semibold text-slate-700 mb-1">
+                          Password Baru (Opsional)
+                        </label>
+                        <input
+                          id="cred-new-pass"
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => {
+                            setNewPassword(e.target.value);
+                            if (credError) setCredError('');
+                          }}
+                          placeholder="Min. 6 karakter"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="cred-confirm-pass" className="block text-xs font-semibold text-slate-700 mb-1">
+                          Konfirmasi Password Baru
+                        </label>
+                        <input
+                          id="cred-confirm-pass"
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => {
+                            setConfirmPassword(e.target.value);
+                            if (credError) setCredError('');
+                          }}
+                          placeholder="Ulangi password"
+                          className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {credError && (
+                      <p className="text-xs font-medium text-rose-600" role="alert">
+                        {credError}
+                      </p>
+                    )}
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={credSaving}
+                        className="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-xl transition-colors"
+                      >
+                        {credSaving ? 'Menyimpan...' : 'Perbarui Akun Admin'}
+                      </button>
+                    </div>
+                  </>
                 )}
-
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors"
-                  >
-                    Perbarui PIN Admin
-                  </button>
-                </div>
               </form>
 
               <div className="pt-5 border-t border-slate-100 space-y-3">
@@ -1228,9 +1726,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
                     <div className="flex-1">
-                      <h4 className="text-sm font-bold text-rose-900">Reset ke Pengaturan Awal</h4>
+                      <h4 className="text-sm font-bold text-rose-900">Jalankan Ulang Setup Database Awal</h4>
                       <p className="text-xs text-rose-800/80 mt-1 leading-relaxed">
-                        Mengembalikan seluruh kartu layanan (8 layanan default), logo, foto hero gedung sekolah, tata letak 4 kolom, serta PIN Admin ke nilai awal (`1234`).
+                        Mengembalikan tabel database ke kondisi awal (8 layanan default, logo, foto gedung sekolah, tata letak 4 kolom, dan mereset pengaturan password awal).
                       </p>
 
                       {confirmReset ? (
