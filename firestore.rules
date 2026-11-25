@@ -1,0 +1,257 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isPrimaryAdmin() {
+      return isSignedIn() && request.auth.token.email == 'zulfianputra77@admin.smp.belajar.id';
+    }
+
+    function isAdmin() {
+      return isPrimaryAdmin() ||
+        (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // --- Validation Helpers ---
+    function isValidSchoolMap(m) {
+      return m is map &&
+        m.keys().hasAll(['name', 'subtitle', 'logoUrl']) &&
+        m.keys().hasOnly(['name', 'subtitle', 'logoUrl']) &&
+        m.name is string && m.name.size() >= 1 && m.name.size() <= 140 &&
+        m.subtitle is string && m.subtitle.size() <= 140 &&
+        m.logoUrl is string && m.logoUrl.size() <= 350000;
+    }
+
+    function isValidHeroMetaMap(m) {
+      return m is map &&
+        m.keys().hasAll(['kicker', 'title', 'subtitle', 'ctaLabel', 'slideIntervalSeconds', 'stat3Value', 'stat3Label']) &&
+        m.keys().hasOnly(['kicker', 'title', 'subtitle', 'ctaLabel', 'slideIntervalSeconds', 'stat3Value', 'stat3Label']) &&
+        m.kicker is string && m.kicker.size() <= 80 &&
+        m.title is string && m.title.size() >= 1 && m.title.size() <= 140 &&
+        m.subtitle is string && m.subtitle.size() <= 200 &&
+        m.ctaLabel is string && m.ctaLabel.size() >= 1 && m.ctaLabel.size() <= 80 &&
+        m.slideIntervalSeconds is int && m.slideIntervalSeconds >= 3 && m.slideIntervalSeconds <= 120 &&
+        m.stat3Value is string && m.stat3Value.size() <= 24 &&
+        m.stat3Label is string && m.stat3Label.size() <= 60;
+    }
+
+    function isValidLeadershipMap(m) {
+      return m is map &&
+        m.keys().hasAll([
+          'visible', 'sectionTitle', 'principalName', 'principalTitle', 'principalNip',
+          'photoUrl', 'greetingTitle', 'greetingMessage', 'visionTitle', 'visionText',
+          'missionTitle', 'missionItems'
+        ]) &&
+        m.keys().hasOnly([
+          'visible', 'sectionTitle', 'principalName', 'principalTitle', 'principalNip',
+          'photoUrl', 'greetingTitle', 'greetingMessage', 'visionTitle', 'visionText',
+          'missionTitle', 'missionItems'
+        ]) &&
+        m.visible is bool &&
+        m.sectionTitle is string && m.sectionTitle.size() <= 140 &&
+        m.principalName is string && m.principalName.size() <= 140 &&
+        m.principalTitle is string && m.principalTitle.size() <= 140 &&
+        m.principalNip is string && m.principalNip.size() <= 60 &&
+        m.photoUrl is string && m.photoUrl.size() <= 600000 &&
+        m.greetingTitle is string && m.greetingTitle.size() <= 160 &&
+        m.greetingMessage is string && m.greetingMessage.size() <= 3000 &&
+        m.visionTitle is string && m.visionTitle.size() <= 100 &&
+        m.visionText is string && m.visionText.size() <= 1000 &&
+        m.missionTitle is string && m.missionTitle.size() <= 100 &&
+        m.missionItems is list && m.missionItems.size() <= 20 &&
+        (m.missionItems.size() == 0 || (m.missionItems[0] is string && m.missionItems[0].size() <= 400));
+    }
+
+    function isValidAboutMap(m) {
+      return m is map &&
+        m.keys().hasAll(['title', 'description', 'address', 'serviceHours', 'extraItems']) &&
+        m.keys().hasOnly(['title', 'description', 'address', 'serviceHours', 'extraItems']) &&
+        m.title is string && m.title.size() <= 140 &&
+        m.description is string && m.description.size() <= 1000 &&
+        m.address is string && m.address.size() <= 250 &&
+        m.serviceHours is string && m.serviceHours.size() <= 120 &&
+        m.extraItems is list && m.extraItems.size() <= 20 &&
+        (m.extraItems.size() == 0 || (
+          m.extraItems[0] is map &&
+          m.extraItems[0].keys().hasAll(['id', 'label', 'value']) &&
+          m.extraItems[0].keys().hasOnly(['id', 'label', 'value']) &&
+          m.extraItems[0].id is string && m.extraItems[0].id.size() <= 80 &&
+          m.extraItems[0].label is string && m.extraItems[0].label.size() <= 120 &&
+          m.extraItems[0].value is string && m.extraItems[0].value.size() <= 500
+        ));
+    }
+
+    function isValidLayoutMap(m) {
+      return m is map &&
+        m.keys().hasAll(['columns', 'cardStyle', 'globalLinkTarget']) &&
+        m.keys().hasOnly(['columns', 'cardStyle', 'globalLinkTarget']) &&
+        m.columns in [2, 3, 4] &&
+        m.cardStyle in ['vertical', 'horizontal', 'minimal'] &&
+        m.globalLinkTarget in ['new_tab', 'same_tab'];
+    }
+
+    function isValidPortalMain(data) {
+      return data.keys().hasAll(['school', 'heroMeta', 'leadership', 'about', 'layout', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['school', 'heroMeta', 'leadership', 'about', 'layout', 'createdAt', 'updatedAt']) &&
+        isValidSchoolMap(data.school) &&
+        isValidHeroMetaMap(data.heroMeta) &&
+        isValidLeadershipMap(data.leadership) &&
+        isValidAboutMap(data.about) &&
+        isValidLayoutMap(data.layout) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidServiceItem(data, serviceId) {
+      return data.keys().hasAll([
+          'id', 'sortOrder', 'name', 'subtitle', 'description',
+          'badgeColor', 'iconName', 'url', 'linkTarget', 'visible',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'sortOrder', 'name', 'subtitle', 'description',
+          'badgeColor', 'iconName', 'customIconUrl', 'url', 'linkTarget', 'visible',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.id == serviceId &&
+        isValidId(data.id) &&
+        data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 500 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.subtitle is string && data.subtitle.size() <= 160 &&
+        data.description is string && data.description.size() <= 500 &&
+        data.badgeColor is string && data.badgeColor.matches('^#[0-9a-fA-F]{6}$') &&
+        data.iconName is string && data.iconName.size() >= 1 && data.iconName.size() <= 60 &&
+        (!('customIconUrl' in data) || (data.customIconUrl is string && data.customIconUrl.size() <= 350000)) &&
+        data.url is string && data.url.size() <= 1000 &&
+        data.linkTarget in ['global', 'new_tab', 'same_tab'] &&
+        data.visible is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidHeroSlide(data) {
+      return data.keys().hasAll(['portalId', 'sortOrder', 'imageUrl', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['portalId', 'sortOrder', 'imageUrl', 'createdAt', 'updatedAt']) &&
+        data.portalId is string && data.portalId == 'main' &&
+        data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 100 &&
+        data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 900000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'addedBy', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'addedBy', 'createdAt']) &&
+        data.uid == uid &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.addedBy is string && data.addedBy == request.auth.uid &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collections ---
+
+    // Connection test doc
+    match /test/{docId} {
+      allow get: if isValidId(docId) && docId == 'connection';
+      allow list, create, update, delete: if false;
+    }
+
+    // Main portal config singleton ('main')
+    match /portal/{docId} {
+      allow get: if isValidId(docId) && docId == 'main';
+      allow list: if false;
+      allow create: if isAdmin() &&
+        isValidId(docId) && docId == 'main' &&
+        isValidPortalMain(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(docId) && docId == 'main' &&
+        isValidPortalMain(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['school', 'heroMeta', 'leadership', 'about', 'layout', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Digital service cards
+    match /services/{serviceId} {
+      allow get: if isValidId(serviceId) && (resource == null || resource.data.visible == true || isAdmin());
+      allow list: if (request.query.limit != null && request.query.limit <= 200) &&
+        (isPrimaryAdmin() || resource.data.visible == true);
+      allow create: if isAdmin() &&
+        isValidId(serviceId) &&
+        isValidServiceItem(incoming(), serviceId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(serviceId) &&
+        isValidServiceItem(incoming(), serviceId) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'sortOrder', 'name', 'subtitle', 'description', 'badgeColor',
+          'iconName', 'customIconUrl', 'url', 'linkTarget', 'visible', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(serviceId);
+    }
+
+    // Hero background slideshow images
+    match /heroSlides/{slideId} {
+      allow get: if isValidId(slideId);
+      allow list: if (request.query.limit != null && request.query.limit <= 50) &&
+        (isPrimaryAdmin() || resource.data.portalId == 'main');
+      allow create: if isAdmin() &&
+        isValidId(slideId) &&
+        isValidHeroSlide(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(slideId) &&
+        isValidHeroSlide(incoming()) &&
+        incoming().portalId == existing().portalId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['sortOrder', 'imageUrl', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(slideId);
+    }
+
+    // Additional Admin UIDs (strictly restricted)
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && isSignedIn() && (request.auth.uid == uid || isPrimaryAdmin());
+      allow list: if false;
+      allow create: if isPrimaryAdmin() &&
+        isValidId(uid) &&
+        isValidAdminRecord(incoming(), uid) &&
+        incoming().createdAt == request.time;
+      allow update: if isPrimaryAdmin() &&
+        isValidId(uid) &&
+        isValidAdminRecord(incoming(), uid) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email']);
+      allow delete: if isPrimaryAdmin() && isValidId(uid);
+    }
+  }
+}

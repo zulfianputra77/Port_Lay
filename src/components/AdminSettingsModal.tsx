@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Cloud,
   Code2,
   Copy,
   Download,
@@ -14,12 +15,14 @@ import {
   Plus,
   RotateCcw,
   Shield,
+  ShieldCheck,
   Sliders,
   Trash2,
   Upload,
   UserCheck,
   X,
 } from 'lucide-react';
+import { PRIMARY_ADMIN_EMAIL } from '../firebase';
 import {
   DEFAULT_HERO_BACKGROUND,
   DEFAULT_PRINCIPAL_PHOTO,
@@ -55,17 +58,11 @@ interface AdminSettingsModalProps {
   isOpen: boolean;
   initialTab: AdminSettingsTab;
   config: PortalConfig;
-  envCredentialsOverride: boolean;
-  adminUsernameHint: string;
+  adminEmail: string | null;
   onClose: () => void;
   onUpdateLayout: (layout: LayoutSettings) => void;
   onUpdateIdentity: (school: SchoolInfo, hero: HeroInfo, about: AboutInfo) => void;
   onUpdateLeadership: (leadership: PrincipalProfileInfo) => void;
-  onChangeCredentials: (
-    currentPassword: string,
-    newUsername: string,
-    newPassword: string
-  ) => Promise<{ ok: boolean; error?: string }>;
   onImportConfig: (imported: PortalConfig) => void;
   onResetDefaults: () => void;
   onNotify: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -75,13 +72,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   isOpen,
   initialTab,
   config,
-  envCredentialsOverride,
-  adminUsernameHint,
+  adminEmail,
   onClose,
   onUpdateLayout,
   onUpdateIdentity,
   onUpdateLeadership,
-  onChangeCredentials,
   onImportConfig,
   onResetDefaults,
   onNotify,
@@ -110,14 +105,6 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
   const [embedHeroBgOverride, setEmbedHeroBgOverride] = useState('');
   const [copiedEmbed, setCopiedEmbed] = useState(false);
 
-  // Security credentials form state
-  const [adminUsernameInput, setAdminUsernameInput] = useState(adminUsernameHint);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [credError, setCredError] = useState('');
-  const [credSaving, setCredSaving] = useState(false);
-
   // Import/Reset states
   const importFileRef = useRef<HTMLInputElement>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -143,16 +130,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
       setHeroBgUploadError('');
       setPrincipalPhotoError('');
       setNewHeroLink('');
-      setAdminUsernameInput(adminUsernameHint);
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setCredError('');
-      setCredSaving(false);
       setConfirmReset(false);
       setCopiedEmbed(false);
     }
-  }, [isOpen, initialTab, config, adminUsernameHint]);
+  }, [isOpen, initialTab, config]);
 
   const generatedOutputCode = useMemo(() => {
     if (!isOpen || activeTab !== 'embed') return '';
@@ -436,47 +417,6 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
       missionItems: parsedMissions,
     });
     onNotify('Profil Kepala Sekolah, Kata Sambutan & Visi Misi berhasil disimpan.', 'success');
-  };
-
-  const handleCredentialsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUser = adminUsernameInput.trim().toLowerCase();
-    if (!/^[a-zA-Z0-9._@-]{3,64}$/.test(cleanUser)) {
-      setCredError('Username minimal 3 karakter (huruf, angka, titik, garis bawah, atau @).');
-      return;
-    }
-    if (!currentPassword.trim()) {
-      setCredError('Masukkan password saat ini untuk konfirmasi.');
-      return;
-    }
-    if (newPassword.trim() && newPassword.trim().length < 6) {
-      setCredError('Password baru minimal harus 6 karakter.');
-      return;
-    }
-    if (newPassword.trim() && newPassword.trim() !== confirmPassword.trim()) {
-      setCredError('Konfirmasi password baru tidak cocok.');
-      return;
-    }
-
-    setCredSaving(true);
-    setCredError('');
-    const result = await onChangeCredentials(
-      currentPassword.trim(),
-      cleanUser,
-      newPassword.trim()
-    );
-    setCredSaving(false);
-
-    if (!result.ok) {
-      setCredError(result.error || 'Gagal memperbarui akun Admin.');
-      return;
-    }
-
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setCredError('');
-    onNotify('Username dan password Admin berhasil diperbarui di database.', 'success');
   };
 
   const handleExportJson = () => {
@@ -1584,112 +1524,39 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
 
           {activeTab === 'security' && (
             <div className="space-y-6">
-              <form onSubmit={handleCredentialsSubmit} className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Ubah Username &amp; Password Admin
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {envCredentialsOverride
-                      ? 'Username dan password admin saat ini dikelola melalui variabel lingkungan ADMIN_USERNAME & ADMIN_PASSWORD di server.'
-                      : 'Perbarui username atau password yang digunakan untuk masuk ke Mode Admin.'}
-                  </p>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 sm:p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900">
+                        Akses Admin Terverifikasi Google
+                      </h3>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 bg-emerald-100 rounded-md">
+                        Aktif
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-700 break-all">
+                      Akun aktif: <strong>{adminEmail || PRIMARY_ADMIN_EMAIL}</strong>
+                    </p>
+                  </div>
                 </div>
 
-                {!envCredentialsOverride && (
-                  <>
-                    <div>
-                      <label htmlFor="cred-username" className="block text-xs font-semibold text-slate-700 mb-1">
-                        Username Admin
-                      </label>
-                      <input
-                        id="cred-username"
-                        type="text"
-                        value={adminUsernameInput}
-                        onChange={(e) => {
-                          setAdminUsernameInput(e.target.value);
-                          if (credError) setCredError('');
-                        }}
-                        placeholder="Contoh: admin atau admin_smpn4"
-                        className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
+                <div className="flex items-start gap-2.5 pt-3 border-t border-emerald-200/70">
+                  <Cloud className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    Database portal terhubung ke <strong>Cloud Firestore permanen</strong>. Semua perubahan pada beranda, profil kepala sekolah, visi misi, tentang sekolah, dan layanan digital otomatis tersimpan permanen di server cloud dan tidak akan kembali ke data awal saat halaman dimuat ulang.
+                  </p>
+                </div>
+              </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label htmlFor="cred-old-pass" className="block text-xs font-semibold text-slate-700 mb-1">
-                          Password Saat Ini
-                        </label>
-                        <input
-                          id="cred-old-pass"
-                          type="password"
-                          value={currentPassword}
-                          onChange={(e) => {
-                            setCurrentPassword(e.target.value);
-                            if (credError) setCredError('');
-                          }}
-                          placeholder="Password lama"
-                          className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="cred-new-pass" className="block text-xs font-semibold text-slate-700 mb-1">
-                          Password Baru (Opsional)
-                        </label>
-                        <input
-                          id="cred-new-pass"
-                          type="password"
-                          value={newPassword}
-                          onChange={(e) => {
-                            setNewPassword(e.target.value);
-                            if (credError) setCredError('');
-                          }}
-                          placeholder="Min. 6 karakter"
-                          className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="cred-confirm-pass" className="block text-xs font-semibold text-slate-700 mb-1">
-                          Konfirmasi Password Baru
-                        </label>
-                        <input
-                          id="cred-confirm-pass"
-                          type="password"
-                          value={confirmPassword}
-                          onChange={(e) => {
-                            setConfirmPassword(e.target.value);
-                            if (credError) setCredError('');
-                          }}
-                          placeholder="Ulangi password"
-                          className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {credError && (
-                      <p className="text-xs font-medium text-rose-600" role="alert">
-                        {credError}
-                      </p>
-                    )}
-
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={credSaving}
-                        className="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-xl transition-colors"
-                      >
-                        {credSaving ? 'Menyimpan...' : 'Perbarui Akun Admin'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </form>
-
-              <div className="pt-5 border-t border-slate-100 space-y-3">
+              <div className="pt-2 border-t border-slate-100 space-y-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Cadangkan &amp; Pulihkan Konfigurasi</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Simpan salinan konfigurasi portal ke berkas JSON atau muat ulang dari cadangan sebelumnya.
+                    Simpan salinan konfigurasi portal ke berkas JSON atau muat ulang dari cadangan sebelumnya untuk disimpan permanen ke database.
                   </p>
                 </div>
 
@@ -1726,9 +1593,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
                     <div className="flex-1">
-                      <h4 className="text-sm font-bold text-rose-900">Jalankan Ulang Setup Database Awal</h4>
+                      <h4 className="text-sm font-bold text-rose-900">Kembalikan Konten Portal ke Awal</h4>
                       <p className="text-xs text-rose-800/80 mt-1 leading-relaxed">
-                        Mengembalikan tabel database ke kondisi awal (8 layanan default, logo, foto gedung sekolah, tata letak 4 kolom, dan mereset pengaturan password awal).
+                        Mengembalikan seluruh konten di database ke pengaturan bawaan (8 layanan default, logo, foto gedung sekolah, profil kepala sekolah default, dan tata letak 4 kolom).
                       </p>
 
                       {confirmReset ? (

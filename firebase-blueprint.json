@@ -1,0 +1,202 @@
+{
+  "entities": {
+    "PortalMain": {
+      "title": "PortalMain",
+      "description": "Konfigurasi utama Portal Resmi SMP Negeri 4 Kota Jambi (identitas sekolah, hero meta, profil kepala sekolah, visi misi, tentang, dan tata letak).",
+      "type": "object",
+      "properties": {
+        "school": {
+          "type": "object",
+          "description": "Identitas sekolah (nama, subjudul, dan URL/data logo)."
+        },
+        "heroMeta": {
+          "type": "object",
+          "description": "Metadata teks hero banner dan interval slideshow."
+        },
+        "leadership": {
+          "type": "object",
+          "description": "Profil kepala sekolah, kata sambutan, visi, dan misi."
+        },
+        "about": {
+          "type": "object",
+          "description": "Informasi bagian Tentang Sekolah beserta poin dinamis."
+        },
+        "layout": {
+          "type": "object",
+          "description": "Pengaturan jumlah kolom, gaya kartu, dan target tautan."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan dokumen di server."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan terakhir dokumen di server."
+        }
+      },
+      "required": ["school", "heroMeta", "leadership", "about", "layout", "createdAt", "updatedAt"]
+    },
+    "ServiceItem": {
+      "title": "ServiceItem",
+      "description": "Satu kartu layanan digital sekolah beserta urutan dan status tampil.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID unik layanan."
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Urutan tampilan kartu layanan."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Nama layanan."
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Subjudul singkat layanan."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Deskripsi layanan."
+        },
+        "badgeColor": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "maxLength": 7,
+          "description": "Warna hex ikon layanan."
+        },
+        "iconName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Nama ikon Lucide."
+        },
+        "customIconUrl": {
+          "type": "string",
+          "maxLength": 350000,
+          "description": "URL atau data URL ikon kustom opsional."
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Tautan tujuan layanan."
+        },
+        "linkTarget": {
+          "type": "string",
+          "enum": ["global", "new_tab", "same_tab"],
+          "description": "Mode pembukaan tautan."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Status tampil atau tersembunyi."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan dokumen di server."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan terakhir di server."
+        }
+      },
+      "required": ["id", "sortOrder", "name", "subtitle", "description", "badgeColor", "iconName", "url", "linkTarget", "visible", "createdAt", "updatedAt"]
+    },
+    "HeroSlide": {
+      "title": "HeroSlide",
+      "description": "Satu gambar latar belakang hero banner (disimpan per dokumen agar tidak melebihi batas 1 MB).",
+      "type": "object",
+      "properties": {
+        "portalId": {
+          "type": "string",
+          "enum": ["main"],
+          "maxLength": 16,
+          "description": "Pengikat dokumen ke portal utama ('main') untuk validasi query publik."
+        },
+        "sortOrder": {
+          "type": "number",
+          "description": "Urutan slide latar belakang hero."
+        },
+        "imageUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 900000,
+          "description": "URL gambar, link Google Drive, atau data URL terkompresi."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan dokumen di server."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan terakhir di server."
+        }
+      },
+      "required": ["portalId", "sortOrder", "imageUrl", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Daftar otorisasi admin tambahan berdasarkan UID Firebase Auth.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID pengguna Firebase Auth."
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160,
+          "description": "Email admin terverifikasi."
+        },
+        "addedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID admin yang menambahkan."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan dokumen di server."
+        }
+      },
+      "required": ["uid", "email", "addedBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/portal/{docId}": {
+      "schema": { "$ref": "#/entities/PortalMain" },
+      "description": "Dokumen konfigurasi utama portal ('main')."
+    },
+    "/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ServiceItem" },
+      "description": "Koleksi layanan digital sekolah."
+    },
+    "/heroSlides/{slideId}": {
+      "schema": { "$ref": "#/entities/HeroSlide" },
+      "description": "Koleksi gambar slideshow latar belakang hero."
+    },
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Koleksi admin tambahan selain email admin utama."
+    }
+  }
+}

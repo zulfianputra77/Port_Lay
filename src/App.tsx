@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { ArrowLeft, Plus, Search, X } from 'lucide-react';
 import { AboutSection } from './components/AboutSection';
 import { AdminBar } from './components/AdminBar';
@@ -12,6 +13,13 @@ import { ServiceEditorModal } from './components/ServiceEditorModal';
 import { PortalTheme, ThemeToggle } from './components/ThemeToggle';
 import { ToastContainer } from './components/Toast';
 import { DEFAULT_PORTAL_CONFIG } from './data/defaultConfig';
+import { PRIMARY_ADMIN_EMAIL, auth, googleProvider } from './firebase';
+import {
+  resetPortalConfigInFirestore,
+  savePortalConfigToFirestore,
+  subscribePortalConfig,
+  verifyUserIsAdmin,
+} from './services/portalFirestore';
 import {
   AboutInfo,
   HeroInfo,
@@ -23,28 +31,15 @@ import {
   ToastMessage,
   ToastType,
 } from './types';
-import { mergeWithDefaults } from './utils/storage';
-
-interface ServerPortalResponse {
-  school: SchoolInfo;
-  hero: HeroInfo;
-  about: AboutInfo;
-  leadership: PrincipalProfileInfo;
-  layout: LayoutSettings;
-  services: ServiceItem[];
-  credentialsConfigured: boolean;
-  envCredentialsOverride: boolean;
-  adminUsernameHint: string;
-}
 
 export default function App() {
   const [config, setConfig] = useState<PortalConfig>(DEFAULT_PORTAL_CONFIG);
-  const [credentialsConfigured, setCredentialsConfigured] = useState<boolean>(false);
-  const [envCredentialsOverride, setEnvCredentialsOverride] = useState<boolean>(false);
-  const [adminUsernameHint, setAdminUsernameHint] = useState<string>('');
-  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [remoteReady, setRemoteReady] = useState<boolean>(false);
+  const [hasRemoteData, setHasRemoteData] = useState<boolean>(false);
 
-  const isAdminMode = Boolean(adminToken);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  const [adminEmail, setAdminEmail] = useState<string | null>(null);
 
   const [activeSection, setActiveSection] = useState<
     'beranda' | 'layanan' | 'profil' | 'tentang'
@@ -82,6 +77,9 @@ export default function App() {
   // Toast state
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  const autoSeededRef = useRef<boolean>(false);
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setToasts((prev) => [...prev.slice(-3), { id, message, type }]);
@@ -94,170 +92,145 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const applyServerPayload = useCallback((payload: ServerPortalResponse) => {
-    setConfig((prev) =>
-      mergeWithDefaults({
-        ...prev,
-        school: payload.school,
-        hero: payload.hero,
-        about: payload.about,
-        leadership: payload.leadership,
-        layout: payload.layout,
-        services: payload.services,
-      })
-    );
-    setCredentialsConfigured(Boolean(payload.credentialsConfigured));
-    setEnvCredentialsOverride(Boolean(payload.envCredentialsOverride));
-    setAdminUsernameHint(payload.adminUsernameHint || '');
+  // Listen to Firebase Auth state and verify Admin role
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setIsAdminMode(false);
+        setAdminEmail(null);
+        setAuthReady(true);
+        return;
+      }
+      const allowed = await verifyUserIsAdmin(user);
+      if (allowed) {
+        setIsAdminMode(true);
+        setAdminEmail(user.email || PRIMARY_ADMIN_EMAIL);
+      } else {
+        setIsAdminMode(false);
+        setAdminEmail(null);
+      }
+      setAuthReady(true);
+    });
+    return unsubscribe;
   }, []);
 
-  const refreshPortalState = useCallback(async () => {
-    try {
-      const res = await fetch('/api/portal');
-      if (!res.ok) return;
-      const data = (await res.json()) as ServerPortalResponse;
-      applyServerPayload(data);
-    } catch {
-      // Fallback keeps default configuration visible if offline
-    }
-  }, [applyServerPayload]);
-
-  // Load initial portal state from backend SQLite database
+  // Subscribe to permanent Cloud Firestore portal data after auth state is ready
   useEffect(() => {
-    void refreshPortalState();
-  }, [refreshPortalState]);
-
-  useEffect(() => {
-    if (pinModalOpen) {
-      void refreshPortalState();
-    }
-  }, [pinModalOpen, refreshPortalState]);
-
-  const persistToServer = useCallback(
-    async (nextConfig: PortalConfig) => {
-      if (!adminToken) return;
-      try {
-        const res = await fetch('/api/portal', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${adminToken}`,
-          },
-          body: JSON.stringify({
-            school: nextConfig.school,
-            hero: nextConfig.hero,
-            about: nextConfig.about,
-            leadership: nextConfig.leadership,
-            layout: nextConfig.layout,
-            services: nextConfig.services,
-          }),
-        });
-        if (res.status === 401) {
-          setAdminToken(null);
-          showToast('Sesi Admin berakhir. Silakan login kembali.', 'warning');
-          return;
-        }
-        if (!res.ok) {
-          const errBody = (await res.json().catch(() => ({}))) as { error?: string };
-          showToast(errBody.error || 'Gagal menyimpan perubahan ke database.', 'error');
-          return;
-        }
-        const saved = (await res.json()) as ServerPortalResponse;
-        applyServerPayload(saved);
-      } catch {
-        showToast('Tidak dapat menghubungi server database.', 'error');
+    if (!authReady) return;
+    const unsubscribe = subscribePortalConfig(
+      isAdminMode,
+      (nextConfig, meta) => {
+        setConfig(nextConfig);
+        setHasRemoteData(meta.hasRemoteData);
+        setRemoteReady(meta.remoteReady);
+      },
+      () => {
+        showToast('Gagal memuat data portal dari database cloud.', 'error');
       }
+    );
+    return unsubscribe;
+  }, [authReady, isAdminMode, showToast]);
+
+  const enqueueWrite = useCallback(
+    (task: () => Promise<void>, errorMessage: string) => {
+      writeQueueRef.current = writeQueueRef.current
+        .then(task)
+        .catch(() => {
+          showToast(errorMessage, 'error');
+        });
+      return writeQueueRef.current;
     },
-    [adminToken, applyServerPayload, showToast]
+    [showToast]
+  );
+
+  // Bootstrap Firestore once if an Admin logs in and no remote document exists yet
+  useEffect(() => {
+    if (isAdminMode && remoteReady && !hasRemoteData && !autoSeededRef.current) {
+      autoSeededRef.current = true;
+      void enqueueWrite(
+        () => savePortalConfigToFirestore(DEFAULT_PORTAL_CONFIG),
+        'Gagal menginisialisasi data awal ke Cloud Firestore.'
+      );
+    }
+  }, [isAdminMode, remoteReady, hasRemoteData, enqueueWrite]);
+
+  const persistToFirestore = useCallback(
+    (nextConfig: PortalConfig) => {
+      if (!isAdminMode) return;
+      void enqueueWrite(
+        () => savePortalConfigToFirestore(nextConfig),
+        'Gagal menyimpan perubahan ke Cloud Firestore. Periksa koneksi internet Anda.'
+      );
+    },
+    [isAdminMode, enqueueWrite]
   );
 
   const commitConfigUpdate = useCallback(
     (updater: (prev: PortalConfig) => PortalConfig) => {
       setConfig((prev) => {
         const next = updater(prev);
-        void persistToServer(next);
+        persistToFirestore(next);
         return next;
       });
     },
-    [persistToServer]
+    [persistToFirestore]
   );
 
-  const handleAuthenticate = async (
-    username: string,
-    password: string,
-    isInitialSetup: boolean
-  ): Promise<AuthActionResponse> => {
+  const handleGoogleSignIn = async (): Promise<AuthActionResponse> => {
     try {
-      const endpoint = isInitialSetup ? '/api/auth/setup-credentials' : '/api/auth/login';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        token?: string;
-        credentialsConfigured?: boolean;
-        adminUsernameHint?: string;
-        error?: string;
-      };
-      if (body.credentialsConfigured) {
-        setCredentialsConfigured(true);
-      }
-      if (body.adminUsernameHint) {
-        setAdminUsernameHint(body.adminUsernameHint);
-      }
-      if (!res.ok || !body.token) {
+      const credential = await signInWithPopup(auth, googleProvider);
+      const allowed = await verifyUserIsAdmin(credential.user);
+      if (!allowed) {
+        const attemptedEmail = credential.user.email || 'akun terpilih';
+        await signOut(auth);
         return {
           ok: false,
-          error: body.error || 'Username atau password Admin tidak sesuai.',
+          error: `Akun ${attemptedEmail} tidak terdaftar sebagai Admin portal. Gunakan akun resmi ${PRIMARY_ADMIN_EMAIL}.`,
         };
       }
-      setAdminToken(body.token);
-      setCredentialsConfigured(true);
-      setAdminUsernameHint(body.adminUsernameHint || username.trim().toLowerCase());
+      setIsAdminMode(true);
+      setAdminEmail(credential.user.email || PRIMARY_ADMIN_EMAIL);
       setPinModalOpen(false);
-      showToast(
-        isInitialSetup
-          ? 'Akun Admin berhasil dibuat. Mode Admin aktif.'
-          : 'Login berhasil. Mode Admin aktif.',
-        'success'
-      );
+      showToast('Login berhasil. Mode Admin aktif dan perubahan tersimpan permanen.', 'success');
       return { ok: true };
-    } catch {
-      return { ok: false, error: 'Gagal terhubung ke server autentikasi.' };
+    } catch (err: unknown) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return { ok: false, error: 'Jendela login Google ditutup sebelum proses selesai.' };
+      }
+      if (code === 'auth/popup-blocked') {
+        return {
+          ok: false,
+          error: 'Pop-up login Google diblokir oleh browser. Izinkan pop-up untuk situs ini lalu coba lagi.',
+        };
+      }
+      if (code === 'auth/unauthorized-domain') {
+        return {
+          ok: false,
+          error: 'Domain ini belum diotorisasi pada konfigurasi Firebase Auth.',
+        };
+      }
+      return {
+        ok: false,
+        error: 'Gagal terhubung ke Google Sign-In. Pastikan koneksi internet aktif lalu coba lagi.',
+      };
     }
   };
 
-  const handleChangeCredentials = async (
-    currentPassword: string,
-    newUsername: string,
-    newPassword: string
-  ): Promise<{ ok: boolean; error?: string }> => {
-    if (!adminToken) return { ok: false, error: 'Sesi Admin tidak aktif.' };
+  const handleExitAdmin = async () => {
     try {
-      const res = await fetch('/api/auth/change-credentials', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
-        },
-        body: JSON.stringify({ currentPassword, newUsername, newPassword }),
-      });
-      const body = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        adminUsernameHint?: string;
-        error?: string;
-      };
-      if (!res.ok) {
-        return { ok: false, error: body.error || 'Gagal memperbarui akun Admin.' };
-      }
-      if (body.adminUsernameHint) {
-        setAdminUsernameHint(body.adminUsernameHint);
-      }
-      return { ok: true };
+      await signOut(auth);
     } catch {
-      return { ok: false, error: 'Gagal menghubungi server.' };
+      // ignore signOut errors
     }
+    setIsAdminMode(false);
+    setAdminEmail(null);
+    setSettingsModalOpen(false);
+    setEditorModalOpen(false);
+    showToast('Anda telah keluar dari Mode Admin.', 'info');
   };
 
   const handleNavigate = (section: 'beranda' | 'layanan' | 'profil' | 'tentang') => {
@@ -394,26 +367,14 @@ export default function App() {
   };
 
   const handleResetDefaults = async () => {
-    if (!adminToken) return;
-    try {
-      const res = await fetch('/api/portal/setup-database', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${adminToken}` },
-      });
-      if (!res.ok) {
-        showToast('Gagal mereset database portal.', 'error');
-        return;
-      }
-      const data = (await res.json()) as ServerPortalResponse;
-      applyServerPayload(data);
-      setSettingsModalOpen(false);
-      if (!data.credentialsConfigured) {
-        setAdminToken(null);
-      }
-      showToast('Database portal telah direset ke pengaturan awal.', 'info');
-    } catch {
-      showToast('Gagal menghubungi server database.', 'error');
-    }
+    if (!isAdminMode) return;
+    setConfig(DEFAULT_PORTAL_CONFIG);
+    setSettingsModalOpen(false);
+    await enqueueWrite(
+      () => resetPortalConfigInFirestore(),
+      'Gagal mereset database portal di Cloud Firestore.'
+    );
+    showToast('Database portal telah dikembalikan ke pengaturan awal.', 'info');
   };
 
   const displayedServices = useMemo(() => {
@@ -450,10 +411,7 @@ export default function App() {
         activeSection={activeSection}
         onNavigate={handleNavigate}
         onAdminClick={() => setPinModalOpen(true)}
-        onExitAdmin={() => {
-          setAdminToken(null);
-          showToast('Anda telah keluar dari Mode Admin.', 'info');
-        }}
+        onExitAdmin={() => void handleExitAdmin()}
       />
 
       {isAdminMode && (
@@ -465,10 +423,7 @@ export default function App() {
             setSettingsTab(tab);
             setSettingsModalOpen(true);
           }}
-          onExitAdmin={() => {
-            setAdminToken(null);
-            showToast('Anda telah keluar dari Mode Admin.', 'info');
-          }}
+          onExitAdmin={() => void handleExitAdmin()}
         />
       )}
 
@@ -483,7 +438,7 @@ export default function App() {
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
         {showServices ? (
-          /* Services View: 8 Digital Service Cards (Beranda, Profil & Tentang hidden) */
+          /* Services View: Digital Service Cards (Beranda, Profil & Tentang hidden) */
           <section id="layanan" className="scroll-mt-24">
             <div className="mb-5">
               <button
@@ -641,10 +596,8 @@ export default function App() {
       {/* Modals */}
       <PinLoginModal
         isOpen={pinModalOpen}
-        credentialsConfigured={credentialsConfigured}
-        adminUsernameHint={adminUsernameHint}
         onClose={() => setPinModalOpen(false)}
-        onAuthenticate={handleAuthenticate}
+        onGoogleSignIn={handleGoogleSignIn}
       />
 
       <ServiceEditorModal
@@ -661,15 +614,13 @@ export default function App() {
         isOpen={settingsModalOpen}
         initialTab={settingsTab}
         config={config}
-        envCredentialsOverride={envCredentialsOverride}
-        adminUsernameHint={adminUsernameHint}
+        adminEmail={adminEmail}
         onClose={() => setSettingsModalOpen(false)}
         onUpdateLayout={handleUpdateLayout}
         onUpdateIdentity={handleUpdateIdentity}
         onUpdateLeadership={handleUpdateLeadership}
-        onChangeCredentials={handleChangeCredentials}
         onImportConfig={handleImportConfig}
-        onResetDefaults={handleResetDefaults}
+        onResetDefaults={() => void handleResetDefaults()}
         onNotify={showToast}
       />
 

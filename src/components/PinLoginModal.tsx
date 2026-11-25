@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Lock, User, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Cloud, Lock, ShieldCheck, X } from 'lucide-react';
+import { PRIMARY_ADMIN_EMAIL } from '../firebase';
 
 export interface AuthActionResponse {
   ok: boolean;
@@ -8,76 +9,34 @@ export interface AuthActionResponse {
 
 interface PinLoginModalProps {
   isOpen: boolean;
-  credentialsConfigured: boolean;
-  adminUsernameHint: string;
   onClose: () => void;
-  onAuthenticate: (
-    username: string,
-    password: string,
-    isInitialSetup: boolean
-  ) => Promise<AuthActionResponse>;
+  onGoogleSignIn: () => Promise<AuthActionResponse>;
 }
 
 export const PinLoginModal: React.FC<PinLoginModalProps> = ({
   isOpen,
-  credentialsConfigured,
-  adminUsernameHint,
   onClose,
-  onAuthenticate,
+  onGoogleSignIn,
 }) => {
-  const [username, setUsername] = useState(adminUsernameHint || '');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const usernameInputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     if (isOpen) {
-      setUsername(adminUsernameHint || '');
-      setPassword('');
-      setConfirmPassword('');
-      setShowPassword(false);
       setError('');
       setSubmitting(false);
-      setTimeout(() => usernameInputRef.current?.focus(), 60);
     }
-  }, [isOpen, adminUsernameHint]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const isSetupMode = !credentialsConfigured;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUser = username.trim().toLowerCase();
-    const cleanPass = password.trim();
-
-    if (!/^[a-zA-Z0-9._@-]{3,64}$/.test(cleanUser)) {
-      setError('Username minimal 3 karakter (huruf, angka, titik, garis bawah, atau @).');
-      return;
-    }
-    if (cleanPass.length < 6) {
-      setError('Password minimal 6 karakter.');
-      return;
-    }
-    if (isSetupMode && cleanPass !== confirmPassword.trim()) {
-      setError('Konfirmasi password tidak cocok.');
-      return;
-    }
-
+  const handleGoogleLogin = async () => {
     setSubmitting(true);
     setError('');
-    const result = await onAuthenticate(cleanUser, cleanPass, isSetupMode);
+    const result = await onGoogleSignIn();
     setSubmitting(false);
-
     if (!result.ok) {
-      setError(result.error || 'Username atau password Admin tidak sesuai.');
-      if (!isSetupMode) {
-        setPassword('');
-      }
+      setError(result.error || 'Gagal masuk ke Mode Admin.');
     }
   };
 
@@ -92,20 +51,14 @@ export const PinLoginModal: React.FC<PinLoginModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-              {isSetupMode ? (
-                <KeyRound className="w-4 h-4" aria-hidden="true" />
-              ) : (
-                <Lock className="w-4 h-4" aria-hidden="true" />
-              )}
+              <Lock className="w-4 h-4" aria-hidden="true" />
             </div>
             <div>
               <h2 id="admin-login-title" className="text-base font-bold text-slate-900">
-                {isSetupMode ? 'Buat Akun Admin Pertama Kali' : 'Login Mode Admin'}
+                Login Mode Admin
               </h2>
               <p className="text-xs text-slate-500">
-                {isSetupMode
-                  ? 'Tetapkan username dan password untuk mengamankan portal'
-                  : 'Masukkan username dan password Admin untuk mengelola portal'}
+                Masuk dengan akun Google resmi pengelola portal
               </p>
             </div>
           </div>
@@ -119,120 +72,60 @@ export const PinLoginModal: React.FC<PinLoginModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Username */}
-          <div>
-            <label
-              htmlFor="admin-username-input"
-              className="block text-sm font-semibold text-slate-700 mb-1.5"
-            >
-              Username Admin
-            </label>
-            <div className="relative">
-              <User
-                className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"
-                aria-hidden="true"
-              />
-              <input
-                ref={usernameInputRef}
-                id="admin-username-input"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => {
-                  setUsername(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder={isSetupMode ? 'Contoh: admin atau admin_smpn4' : 'Masukkan username...'}
-                className="w-full pl-10 pr-4 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+        <div className="p-6 space-y-4">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="text-xs text-slate-700 leading-relaxed">
+                <p className="font-semibold text-slate-900">Akun Admin Terdaftar:</p>
+                <p className="mt-0.5 font-mono text-[11px] sm:text-xs text-blue-800 break-all">
+                  {PRIMARY_ADMIN_EMAIL}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5 pt-2 border-t border-blue-200/60">
+              <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Semua perubahan profil, banner, visi misi, dan daftar layanan akan tersimpan{' '}
+                <strong className="text-slate-800">permanen di Cloud Firestore</strong> dan tidak akan kembali ke data awal.
+              </p>
             </div>
           </div>
-
-          {/* Password */}
-          <div>
-            <label
-              htmlFor="admin-password-input"
-              className="block text-sm font-semibold text-slate-700 mb-1.5"
-            >
-              {isSetupMode ? 'Buat Password Admin' : 'Password'}
-            </label>
-            <div className="relative">
-              <input
-                id="admin-password-input"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete={isSetupMode ? 'new-password' : 'current-password'}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder="Masukkan password..."
-                className="w-full px-4 py-2.5 pr-11 text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-lg"
-                aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {isSetupMode && (
-            <div>
-              <label
-                htmlFor="admin-password-confirm"
-                className="block text-sm font-semibold text-slate-700 mb-1.5"
-              >
-                Konfirmasi Password
-              </label>
-              <input
-                id="admin-password-confirm"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => {
-                  setConfirmPassword(e.target.value);
-                  if (error) setError('');
-                }}
-                placeholder="Ulangi password..."
-                className="w-full px-4 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          )}
-
-          {isSetupMode && (
-            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2.5 leading-relaxed">
-              Username dan password Anda akan dienkripsi serta disimpan di database server. Anda bisa mengisi password seperti <strong>silahkanmasuk</strong> atau kombinasi pilihan Anda sendiri.
-            </p>
-          )}
 
           {error && (
-            <p className="text-xs font-medium text-rose-600 leading-relaxed" role="alert">
+            <div
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700 leading-relaxed"
+              role="alert"
+            >
               {error}
-            </p>
+            </div>
           )}
 
-          <div className="flex items-center justify-end gap-2.5 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              disabled={submitting}
+              className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 rounded-xl transition-colors"
             >
               Batal
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleGoogleLogin}
               disabled={submitting}
-              className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-xl transition-colors shadow-xs"
+              className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-xl transition-colors shadow-xs"
             >
-              {submitting ? 'Memproses...' : isSetupMode ? 'Simpan & Masuk Admin' : 'Masuk Admin'}
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M21.35 11.1h-9.17v2.98h5.27c-.45 2.38-2.52 3.88-5.27 3.88a5.96 5.96 0 1 1 0-11.92c1.49 0 2.84.54 3.88 1.54l2.18-2.18A9.04 9.04 0 0 0 12.18 3a9.01 9.01 0 0 0 0 18.02c5.2 0 8.64-3.65 8.64-8.79 0-.6-.06-1.08-.17-1.13Z"
+                />
+              </svg>
+              <span>{submitting ? 'Menghubungkan Google...' : 'Masuk Admin dengan Google'}</span>
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

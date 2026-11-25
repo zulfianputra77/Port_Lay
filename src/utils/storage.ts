@@ -267,7 +267,7 @@ export async function processImageFileToDataUrl(file: File, maxSize = 256): Prom
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        if (maxSize >= 800) {
+        if (maxSize >= 600) {
           resolve(canvas.toDataURL('image/jpeg', 0.82));
         } else {
           resolve(canvas.toDataURL('image/png', 0.9));
